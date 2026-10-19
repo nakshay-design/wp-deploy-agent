@@ -2,7 +2,7 @@ import { parse, HTMLElement } from 'node-html-parser';
 import type { ConvertedSection, ConvertedSite, FieldDef, LayoutType } from './types';
 
 /** Elements that are never treated as content sections. */
-const NON_CONTENT = new Set(['script', 'style', 'link', 'meta', 'noscript', 'template']);
+const NON_CONTENT = new Set(['script', 'style', 'link', 'meta', 'noscript', 'template', 'helmet']);
 
 /** Page chrome that never counts as a content section or a repeater item. */
 const CHROME = new Set(['main', 'header', 'footer', 'nav']);
@@ -32,8 +32,9 @@ export interface AnalyzeInput {
 /** Converts a static HTML document into a WordPress/ACF section model. */
 export function analyzeHtml(input: AnalyzeInput): ConvertedSite {
   const { html, htmlDir, assetMap } = input;
-  const root = parse(html, { comment: false });
-  const ctx: Context = { source: html, htmlDir, assetMap };
+  const source = unwrapBundledTemplate(html);
+  const root = parse(source, { comment: false });
+  const ctx: Context = { source, htmlDir, assetMap };
 
   const title = text(root.querySelector('title')) || text(root.querySelector('h1')) || 'Converted Site';
   const description =
@@ -58,10 +59,10 @@ export function analyzeHtml(input: AnalyzeInput): ConvertedSite {
     .join('\n\n');
 
   const headerMarkup = headerEl
-    ? rewriteAssetUrls(stripAssetTags(sourceSlice(html, headerEl)), assetMap, htmlDir)
+    ? rewriteAssetUrls(stripAssetTags(sourceSlice(source, headerEl)), assetMap, htmlDir)
     : '';
   const footerMarkup = footerEl
-    ? rewriteAssetUrls(stripAssetTags(sourceSlice(html, footerEl)), assetMap, htmlDir)
+    ? rewriteAssetUrls(stripAssetTags(sourceSlice(source, footerEl)), assetMap, htmlDir)
     : '';
 
   return {
@@ -76,6 +77,27 @@ export function analyzeHtml(input: AnalyzeInput): ConvertedSite {
     inlineCss,
     assets: [...assetMap.values()],
   };
+}
+
+/** Some exports wrap the actual page HTML in a JSON string inside a bundler script tag. */
+function unwrapBundledTemplate(html: string): string {
+  const root = parse(html, { comment: false });
+  const template = root.querySelector('script[type="__bundler/template"]');
+  if (!template) return html;
+
+  const raw = template.innerHTML.trim();
+  if (!raw) return html;
+
+  try {
+    const decoded = JSON.parse(raw);
+    if (typeof decoded === 'string' && /<html[\s>]/i.test(decoded)) {
+      return decoded;
+    }
+  } catch {
+    // Fall back to the original source when the payload is not valid JSON.
+  }
+
+  return html;
 }
 
 /* ------------------------------------------------------------------ *
