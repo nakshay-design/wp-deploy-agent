@@ -46,6 +46,11 @@ export async function deploySite(
     /* 1. Connect ---------------------------------------------------------- */
     const scheme = config.protocol ?? (secure ? 'ftps' : 'ftp');
     say(`Connecting to ${scheme}://${config.host}:${port} as ${config.user} ...`);
+    say(
+      secure && !rejectUnauthorized
+        ? 'FTPS TLS verification: allowing self-signed certificates.'
+        : 'FTPS TLS verification: strict certificate validation.',
+    );
     await ftp.connect();
     record('connect', true, `${scheme}://${config.host}:${port}`, true);
     say('Connected.');

@@ -21,14 +21,36 @@ export class FtpClient {
   constructor(private readonly opts: FtpOptions) {}
 
   async connect(): Promise<void> {
-    await this.client.access({
+    const accessOptions = {
       host: this.opts.host,
       port: this.opts.port,
       user: this.opts.user,
       password: this.opts.password,
       secure: this.opts.secure,
-      secureOptions: { rejectUnauthorized: this.opts.rejectUnauthorized },
-    });
+      secureOptions: {
+        rejectUnauthorized: this.opts.rejectUnauthorized,
+        checkServerIdentity: this.opts.rejectUnauthorized ? undefined : () => undefined,
+      },
+    } as const;
+
+    try {
+      await this.client.access(accessOptions);
+    } catch (error) {
+      if (!this.opts.secure || this.opts.rejectUnauthorized || !isTlsCertificateError(error)) {
+        throw error;
+      }
+
+      // Some hosts still fail the FTPS handshake with a self-signed certificate even when
+      // rejectUnauthorized is false. Retry once with Node's global TLS check disabled.
+      const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      try {
+        await this.client.access(accessOptions);
+      } finally {
+        if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
+      }
+    }
     // Many shared hosts drop the connection mid-transfer without this.
     this.client.ftp.socket.setKeepAlive(true);
   }
@@ -109,4 +131,9 @@ export function joinRemote(...parts: string[]): string {
     .filter(Boolean)
     .join('/');
   return joined.startsWith('/') ? joined : `/${joined}`;
+}
+
+function isTlsCertificateError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /self[- ]signed|unable to verify|certificate/i.test(message);
 }
