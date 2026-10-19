@@ -43,7 +43,7 @@ export default function Home() {
       user: String(data.get('user') ?? ''),
       password: String(data.get('password') ?? ''),
       secure: String(data.get('protocol')) === 'ftps',
-      rejectUnauthorized: data.get('allowSelfSigned') === 'on',
+      rejectUnauthorized: data.get('allowSelfSigned') !== 'on',
       remoteWebRoot: String(data.get('remoteWebRoot') ?? '/public_html'),
       siteUrl: String(data.get('siteUrl') ?? ''),
       theme: {
