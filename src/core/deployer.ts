@@ -89,6 +89,7 @@ export async function deploySite(
       themeSlug: config.theme?.slug,
       settings: config.settings,
       admin: config.admin,
+      seed: config.seed,
     });
     await ftp.uploadText(script, setupRemotePath);
     say(`Uploaded one-time setup script ${scriptName}.`);

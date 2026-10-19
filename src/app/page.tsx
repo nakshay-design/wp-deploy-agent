@@ -14,10 +14,12 @@ interface DeployResult {
   site: string;
   steps: DeployStep[];
   log: string[];
+  conversion?: { slug: string; title: string; sections: number };
 }
 
 export default function Home() {
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'html' | 'theme'>('html');
   const [result, setResult] = useState<DeployResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,8 +73,13 @@ export default function Home() {
     const body = new FormData();
     body.set('accessToken', String(data.get('accessToken') ?? ''));
     body.set('config', JSON.stringify(config));
-    const zip = data.get('themeZip');
-    if (zip instanceof File && zip.size > 0) body.set('theme', zip);
+    if (mode === 'html') {
+      const html = data.get('htmlZip');
+      if (html instanceof File && html.size > 0) body.set('html', html);
+    } else {
+      const zip = data.get('themeZip');
+      if (zip instanceof File && zip.size > 0) body.set('theme', zip);
+    }
 
     try {
       const response = await fetch('/api/deploy', { method: 'POST', body });
@@ -90,8 +97,9 @@ export default function Home() {
     <div className="wrap">
       <h1>WP Deploy Agent</h1>
       <p className="sub">
-        Upload a WordPress theme, activate it, apply site settings and verify the live page - over
-        FTPS/FTP.
+        Upload an HTML site ZIP to convert it into a WordPress + ACF Flexible Content theme, or
+        upload a ready-made theme. The theme is activated, site settings applied and the live page
+        verified - over FTPS/FTP.
       </p>
 
       <form onSubmit={handleSubmit}>
@@ -154,19 +162,39 @@ export default function Home() {
         </fieldset>
 
         <fieldset>
-          <legend>Theme</legend>
+          <legend>Source</legend>
           <div className="grid">
             <label>
-              Theme slug (remote folder)
-              <input name="themeSlug" required placeholder="ladies-mile" />
+              Input type
+              <select
+                name="mode"
+                value={mode}
+                onChange={(event) => setMode(event.target.value as 'html' | 'theme')}
+              >
+                <option value="html">HTML site ZIP (convert to WordPress + ACF)</option>
+                <option value="theme">WordPress theme ZIP (deploy as-is)</option>
+              </select>
             </label>
             <label>
-              Theme ZIP (optional)
-              <input name="themeZip" type="file" accept=".zip" />
+              Theme slug (remote folder){mode === 'html' ? ' - optional, derived from the title' : ''}
+              <input name="themeSlug" required={mode === 'theme'} placeholder="my-site" />
             </label>
+            {mode === 'html' ? (
+              <label>
+                HTML site ZIP
+                <input name="htmlZip" type="file" accept=".zip" required />
+              </label>
+            ) : (
+              <label>
+                Theme ZIP (optional)
+                <input name="themeZip" type="file" accept=".zip" />
+              </label>
+            )}
           </div>
           <p className="detail" style={{ marginTop: 10 }}>
-            Skip the ZIP to only activate a theme that is already on the server.
+            {mode === 'html'
+              ? 'The ZIP is split into ACF Flexible Content sections, packaged as a theme, uploaded, activated and seeded with your real text and images. Advanced Custom Fields (Free or Pro) must already be installed on the site.'
+              : 'Upload a ready-made WordPress theme. Leave the file empty to only activate a theme that is already on the server.'}
           </p>
         </fieldset>
 
@@ -232,6 +260,12 @@ export default function Home() {
           <strong>
             {result.ok ? 'Deployment succeeded' : 'Deployment failed'} - {result.site}
           </strong>
+          {result.conversion ? (
+            <p className="detail" style={{ marginTop: 4 }}>
+              Converted &quot;{result.conversion.title}&quot; ({result.conversion.slug}) into{' '}
+              {result.conversion.sections} section{result.conversion.sections === 1 ? '' : 's'}.
+            </p>
+          ) : null}
           <ul className="steps">
             {result.steps.map((step, index) => (
               <li key={index}>

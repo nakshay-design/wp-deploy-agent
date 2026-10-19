@@ -12,3 +12,7 @@ config.json
 *.log
 next-env.d.ts
 *.tsbuildinfo
+
+# Local conversion/debug scratch
+tmp/
+.tmp-test/

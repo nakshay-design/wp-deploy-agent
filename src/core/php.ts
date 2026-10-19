@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { AdminConfig, SettingsConfig } from './types';
+import type { AdminConfig, SeedConfig, SettingsConfig } from './types';
 
 /** Encode a JS string as a safe single-quoted PHP literal. */
 export function phpString(value: string): string {
@@ -18,6 +18,8 @@ export interface SetupScriptOptions {
   themeSlug?: string;
   settings?: SettingsConfig;
   admin?: AdminConfig;
+  /** Converts imported images into media-library attachments and seeds the front page. */
+  seed?: SeedConfig;
 }
 
 /**
@@ -26,7 +28,7 @@ export interface SetupScriptOptions {
  * and (optionally) ensures an administrator login.
  */
 export function buildSetupScript(opts: SetupScriptOptions): string {
-  const { token, themeSlug, settings = {}, admin } = opts;
+  const { token, themeSlug, settings = {}, admin, seed } = opts;
 
   const lines: string[] = [];
   lines.push('<?php');
@@ -93,6 +95,10 @@ export function buildSetupScript(opts: SetupScriptOptions): string {
     lines.push("$out['all_admins'] = wp_list_pluck( $admins, 'user_login' );");
   }
 
+  if (seed) {
+    lines.push(...seedLines(seed));
+  }
+
   lines.push('');
   lines.push('flush_rewrite_rules();');
   lines.push('');
@@ -103,6 +109,93 @@ export function buildSetupScript(opts: SetupScriptOptions): string {
   lines.push('echo json_encode( $out, JSON_PRETTY_PRINT );');
 
   return `${lines.join('\n')}\n`;
+}
+
+/** PHP for importing theme assets into the media library and seeding the front page. */
+function seedLines(seed: SeedConfig): string[] {
+  const json = phpString(JSON.stringify(seed));
+
+  return [
+    '',
+    '/* Seed the front page from imported HTML content */',
+    '$html2wp_theme_dir = get_template_directory();',
+    `$html2wp_seed = json_decode( ${json}, true );`,
+    '',
+    'function html2wp_seed_import( $path, $rel ) {',
+    '\tstatic $cache = array();',
+    '\tif ( isset( $cache[ $rel ] ) ) { return $cache[ $rel ]; }',
+    '\t$existing = get_posts( array(',
+    "\t\t'post_type'      => 'attachment',",
+    "\t\t'post_status'    => 'inherit',",
+    "\t\t'posts_per_page' => 1,",
+    "\t\t'fields'         => 'ids',",
+    "\t\t'meta_key'       => '_html2wp_seed_file',",
+    "\t\t'meta_value'     => $rel,",
+    '\t) );',
+    '\tif ( ! empty( $existing ) ) { $cache[ $rel ] = (int) $existing[0]; return (int) $existing[0]; }',
+    '\tif ( ! file_exists( $path ) ) { return 0; }',
+    '\t$contents = @file_get_contents( $path );',
+    '\tif ( false === $contents ) { return 0; }',
+    '\t$upload = wp_upload_bits( basename( $rel ), null, $contents );',
+    "\tif ( ! empty( $upload['error'] ) ) { return 0; }",
+    "\t$ft = wp_check_filetype( $upload['file'] );",
+    '\t$id = wp_insert_attachment( array(',
+    "\t\t'post_mime_type' => $ft['type'],",
+    "\t\t'post_title'     => sanitize_file_name( basename( $upload['file'] ) ),",
+    "\t\t'post_status'    => 'inherit',",
+    "\t), $upload['file'] );",
+    '\tif ( is_wp_error( $id ) || ! $id ) { return 0; }',
+    "\trequire_once ABSPATH . 'wp-admin/includes/image.php';",
+    "\t$meta = wp_generate_attachment_metadata( $id, $upload['file'] );",
+    '\tif ( ! is_wp_error( $meta ) ) { wp_update_attachment_metadata( $id, $meta ); }',
+    "\tupdate_post_meta( $id, '_html2wp_seed_file', $rel );",
+    '\t$cache[ $rel ] = (int) $id;',
+    '\treturn (int) $id;',
+    '}',
+    '',
+    'function html2wp_seed_value( $value, $theme_dir ) {',
+    '\tif ( is_array( $value ) ) {',
+    '\t\t$out = array();',
+    '\t\tforeach ( $value as $k => $v ) { $out[ $k ] = html2wp_seed_value( $v, $theme_dir ); }',
+    '\t\treturn $out;',
+    '\t}',
+    "\tif ( is_string( $value ) && '' !== $value && preg_match( '/\\.(png|jpe?g|gif|webp|avif|svg)$/i', $value ) ) {",
+    "\t\t$id = html2wp_seed_import( $theme_dir . '/' . ltrim( $value, '/' ), $value );",
+    '\t\tif ( $id ) { return $id; }',
+    '\t}',
+    '\treturn $value;',
+    '}',
+    '',
+    "if ( is_array( $html2wp_seed ) && ! empty( $html2wp_seed['page'] ) ) {",
+    "\t$page  = $html2wp_seed['page'];",
+    "\t$slug  = isset( $page['slug'] ) ? $page['slug'] : 'home';",
+    "\t$title = isset( $page['title'] ) ? $page['title'] : 'Home';",
+    '\t$found = get_page_by_path( $slug );',
+    '\tif ( $found ) {',
+    '\t\t$pid = $found->ID;',
+    "\t\twp_update_post( array( 'ID' => $pid, 'post_title' => $title, 'post_status' => 'publish' ) );",
+    '\t} else {',
+    '\t\t$pid = wp_insert_post( array(',
+    "\t\t\t'post_type'   => 'page',",
+    "\t\t\t'post_status' => 'publish',",
+    "\t\t\t'post_title'  => $title,",
+    "\t\t\t'post_name'   => $slug,",
+    '\t\t) );',
+    '\t}',
+    '\tif ( ! is_wp_error( $pid ) && $pid ) {',
+    '\t\t$rows = array();',
+    "\t\tforeach ( (array) $html2wp_seed['sections'] as $row ) {",
+    '\t\t\t$rows[] = html2wp_seed_value( $row, $html2wp_theme_dir );',
+    '\t\t}',
+    "\t\tupdate_post_meta( $pid, 'page_sections', $rows );",
+    "\t\tupdate_post_meta( $pid, '_page_sections', 'field_html2wp_page_sections' );",
+    "\t\tupdate_option( 'show_on_front', 'page' );",
+    "\t\tupdate_option( 'page_on_front', $pid );",
+    "\t\t$out['seeded_page']     = $pid;",
+    "\t\t$out['seeded_sections'] = count( $rows );",
+    '\t}',
+    '}',
+  ];
 }
 
 export const WORDPRESS_HTACCESS = `# BEGIN WordPress

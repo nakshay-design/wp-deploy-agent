@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { NextResponse } from 'next/server';
 import AdmZip from 'adm-zip';
 import { deploySite } from '@/core/deployer';
+import { convertHtmlZip } from '@/core/html/convert';
 import type { SiteConfig } from '@/core/types';
 
 export const runtime = 'nodejs';
@@ -37,8 +38,41 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const config = JSON.parse(rawConfig) as SiteConfig;
 
+    let conversion: { slug: string; title: string; sections: number } | undefined;
+
+    const html = form.get('html');
     const zip = form.get('theme');
-    if (zip && typeof zip !== 'string') {
+
+    if (html && typeof html !== 'string') {
+      // HTML site mode: unzip, convert to a WordPress/ACF theme, then deploy it.
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wpdeploy-'));
+      const zipPath = path.join(tempDir, 'site.zip');
+      fs.writeFileSync(zipPath, Buffer.from(await html.arrayBuffer()));
+
+      const result = convertHtmlZip({
+        zipPath,
+        outDir: path.join(tempDir, 'theme'),
+        workDir: path.join(tempDir, 'work'),
+        slug: config.theme?.slug || undefined,
+      });
+
+      config.theme = {
+        slug: result.slug,
+        localDir: result.themeDir,
+        exclude: config.theme?.exclude ?? [
+          'README.txt',
+          'README.md',
+          '.DS_Store',
+          '.git',
+          'node_modules',
+        ],
+      };
+      config.settings = config.settings ?? {};
+      if (!config.settings.blogname) config.settings.blogname = result.title;
+      config.seed = result.seed;
+      config.skipThemeUpload = false;
+      conversion = { slug: result.slug, title: result.title, sections: result.seed.sections.length };
+    } else if (zip && typeof zip !== 'string') {
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wpdeploy-'));
       const buffer = Buffer.from(await zip.arrayBuffer());
       new AdmZip(buffer).extractAllTo(tempDir, true);
@@ -51,7 +85,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const result = await deploySite(config);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, conversion });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },

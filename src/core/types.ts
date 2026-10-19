@@ -24,6 +24,13 @@ export interface AdminConfig {
   email?: string;
 }
 
+/** Content imported from a source HTML page, seeded into the front page. */
+export interface SeedConfig {
+  page: { title: string; slug: string };
+  /** One entry per flexible-content row: `acf_fc_layout` plus field values. */
+  sections: Array<Record<string, unknown>>;
+}
+
 export interface VerifyConfig {
   /** Expected HTTP status of siteUrl. Defaults to 200. */
   expectStatus?: number;
@@ -52,6 +59,8 @@ export interface SiteConfig {
   theme: ThemeConfig;
   settings?: SettingsConfig;
   admin?: AdminConfig;
+  /** Populates the front page from converted HTML content. */
+  seed?: SeedConfig;
   /** Write the standard WordPress rewrite block if .htaccess is missing. */
   htaccess?: boolean;
   verify?: VerifyConfig;
@@ -72,4 +81,6 @@ export interface DeployResult {
   site: string;
   steps: DeployStep[];
   log: string[];
+  /** Present when the deploy ran in HTML-conversion mode. */
+  conversion?: { slug: string; title: string; sections: number };
 }
