@@ -71,7 +71,7 @@ export default function Home() {
     };
 
     const body = new FormData();
-    body.set('accessToken', String(data.get('accessToken') ?? ''));
+    body.set('accessToken', String(data.get('accessToken') ?? '').trim());
     body.set('config', JSON.stringify(config));
     if (mode === 'html') {
       const html = data.get('htmlZip');

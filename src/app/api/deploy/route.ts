@@ -26,8 +26,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const form = await request.formData();
 
-    const suppliedToken = String(form.get('accessToken') ?? '');
-    if (!safeEqual(suppliedToken, expectedToken)) {
+    const suppliedToken = String(form.get('accessToken') ?? '').trim();
+    if (!safeEqual(suppliedToken, expectedToken.trim())) {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
     }
 
