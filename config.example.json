@@ -1,0 +1,35 @@
+{
+  "name": "ladies-mile",
+  "protocol": "ftps",
+  "host": "103.96.117.73",
+  "port": 21,
+  "user": "webexpert@ladies-mile.co.nz",
+  "passwordEnv": "LM_FTP_PASS",
+  "secure": true,
+  "rejectUnauthorized": false,
+  "remoteWebRoot": "/public_html",
+  "siteUrl": "https://ladies-mile.co.nz",
+  "theme": {
+    "slug": "ladies-mile",
+    "localDir": "D:/xampp/htdocs/ladies-mile/wp-content/themes/ladies-mile",
+    "exclude": ["README.txt", "README.md", ".DS_Store", ".git", "node_modules"]
+  },
+  "settings": {
+    "blogname": "Ladies Mile",
+    "blogdescription": "A new masterplan for Queenstown that's miles ahead",
+    "permalink_structure": "/%postname%/",
+    "blog_public": 1,
+    "users_can_register": 0,
+    "WPLANG": "en_NZ"
+  },
+  "admin": {
+    "login": "ladiesmileco",
+    "password": "REPLACE_WITH_A_STRONG_PASSWORD",
+    "email": "admin@ladies-mile.co.nz"
+  },
+  "htaccess": true,
+  "verify": {
+    "expectStatus": 200,
+    "contains": "miles ahead"
+  }
+}

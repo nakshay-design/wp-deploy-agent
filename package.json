@@ -1,0 +1,33 @@
+{
+  "name": "wp-deploy-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deploy a WordPress theme + site settings to a live host over FTPS/FTP, from the CLI or a Vercel-hosted web UI.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "deploy": "tsx src/cli.ts deploy",
+    "verify": "tsx src/cli.ts verify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "basic-ftp": "^5.0.5",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}

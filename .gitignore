@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.vercel/
+out/
+
+# Secrets - never commit these
+.env
+.env.local
+.env*.local
+config.json
+
+*.log
+next-env.d.ts
+*.tsbuildinfo
