@@ -1,4 +1,5 @@
 import { Client } from 'basic-ftp';
+import type { AccessOptions } from 'basic-ftp';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -16,7 +17,7 @@ export interface FtpOptions {
 const SOCKET_TIMEOUT_MS = 60_000;
 
 export class FtpClient {
-  private readonly client = new Client(SOCKET_TIMEOUT_MS);
+  private client = new Client(SOCKET_TIMEOUT_MS);
 
   constructor(private readonly opts: FtpOptions) {}
 
@@ -31,26 +32,16 @@ export class FtpClient {
         rejectUnauthorized: this.opts.rejectUnauthorized,
         checkServerIdentity: this.opts.rejectUnauthorized ? undefined : () => undefined,
       },
-    } as const;
+    };
 
-    try {
-      await this.client.access(accessOptions);
-    } catch (error) {
-      if (!this.opts.secure || this.opts.rejectUnauthorized || !isTlsCertificateError(error)) {
-        throw error;
-      }
-
-      // Some hosts still fail the FTPS handshake with a self-signed certificate even when
-      // rejectUnauthorized is false. Retry once with Node's global TLS check disabled.
-      const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-      try {
-        await this.client.access(accessOptions);
-      } finally {
-        if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
-      }
+    if (this.opts.secure && !this.opts.rejectUnauthorized) {
+      await withTlsVerificationDisabled(async () => {
+        await this.connectWithFreshClient(accessOptions);
+      });
+    } else {
+      await this.connectWithFreshClient(accessOptions);
     }
+
     // Many shared hosts drop the connection mid-transfer without this.
     this.client.ftp.socket.setKeepAlive(true);
   }
@@ -123,6 +114,19 @@ export class FtpClient {
       return false;
     }
   }
+
+  private async connectWithFreshClient(accessOptions: AccessOptions): Promise<void> {
+    this.client.close();
+    this.client = new Client(SOCKET_TIMEOUT_MS);
+    try {
+      await this.client.access(accessOptions);
+    } catch (error) {
+      if (isTlsCertificateError(error)) {
+        throw new Error(`FTPS TLS handshake failed: ${describe(error)}`);
+      }
+      throw error;
+    }
+  }
 }
 
 export function joinRemote(...parts: string[]): string {
@@ -136,4 +140,19 @@ export function joinRemote(...parts: string[]): string {
 function isTlsCertificateError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /self[- ]signed|unable to verify|certificate/i.test(message);
+}
+
+async function withTlsVerificationDisabled<T>(work: () => Promise<T>): Promise<T> {
+  const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  try {
+    return await work();
+  } finally {
+    if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
+  }
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

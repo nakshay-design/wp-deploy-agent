@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "basic-ftp": "^5.0.5",
+    "basic-ftp": "^6.2.3",
     "next": "^15.1.6",
     "node-html-parser": "^6.1.13",
     "react": "^19.0.0",
